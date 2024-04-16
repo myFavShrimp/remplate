@@ -30,8 +30,12 @@ Compile-time templating that feels Rust-native
 ```rust
 // src/main.rs
 
+fn my_template(debug_enabled: bool) -> String {
+    remplate::remplate!("my_template.html")
+}
+
 fn main() {
-    println!("{}", remplate::remplate!("my_template.html"));
+    println!("{}", my_template(true));
 }
 ```
 
