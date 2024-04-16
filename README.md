@@ -39,7 +39,7 @@ fn main() {
 }
 ```
 
-```shell
+```html
 ~/remplate-example: cargo run
    Compiling remplate-example v0.1.0 (/home/user/remplate-example)
     Finished dev [unoptimized + debuginfo] target(s) in 0.13s
