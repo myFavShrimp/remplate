@@ -36,10 +36,10 @@ fn main() {
 ```
 
 ```shell
-~/project: cargo run
-   Compiling remplate-example v0.1.0 (/home/user/project)
+~/remplate-example: cargo run
+   Compiling remplate-example v0.1.0 (/home/user/remplate-example)
     Finished dev [unoptimized + debuginfo] target(s) in 0.13s
-     Running `target/debug/project`
+     Running `target/debug/remplate-example`
 
 
 <h1>My Awesome Template</h1>
