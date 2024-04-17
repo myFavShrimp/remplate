@@ -335,7 +335,47 @@ impl Ord for Item {
     }
 }
 
-fn obtain_format_part(code_block: &str) -> (Option<&str>, Option<&str>) {
+struct FormatPart<'a> {
+    expression: &'a str,
+    formatting: Option<&'a str>,
+}
+
+impl<'a> From<&'a str> for FormatPart<'a> {
+    fn from(value: &'a str) -> Self {
+        if let Some(position) = value.find(':') {
+            let (expression, formatting) = value.split_at(position);
+            FormatPart {
+                expression,
+                formatting: Some(formatting),
+            }
+        } else {
+            FormatPart {
+                expression: value,
+                formatting: None,
+            }
+        }
+    }
+}
+
+impl<'a> FormatPart<'a> {
+    fn to_code(&self) -> String {
+        match self {
+            FormatPart {
+                expression,
+                formatting: Some(format_part),
+            } => format!(
+                r#"result.push_str(&format!("{{{}}}", {}));"#,
+                format_part, expression
+            ),
+            FormatPart {
+                expression,
+                formatting: None,
+            } => format!(r#"result.push_str(&format!("{{{}}}"));"#, expression),
+        }
+    }
+}
+
+fn obtain_format_part(code_block: &str) -> (Option<&str>, Option<FormatPart>) {
     match code_block.rfind(';') {
         Some(position) => {
             let format_part = match code_block[(position + 1)..].trim() {
@@ -343,7 +383,10 @@ fn obtain_format_part(code_block: &str) -> (Option<&str>, Option<&str>) {
                 other => Some(other),
             };
 
-            (Some(&code_block[..position + 1]), format_part)
+            (
+                Some(&code_block[..position + 1]),
+                format_part.map(FormatPart::from),
+            )
         }
         None => {
             let format_part = match code_block.trim() {
@@ -351,7 +394,7 @@ fn obtain_format_part(code_block: &str) -> (Option<&str>, Option<&str>) {
                 other => Some(other),
             };
 
-            (None, format_part)
+            (None, format_part.map(FormatPart::from))
         }
     }
 }
@@ -386,20 +429,14 @@ fn handle_input(input: &str) -> Result<String, MatchError> {
         match obtain_format_part(code_block) {
             (None, None) => unreachable!(),
             (None, Some(format_part)) => {
-                code.push_str(&format!(
-                    r#"result.push_str(&format!("{{{}}}"));"#,
-                    format_part
-                ));
+                code.push_str(&format_part.to_code());
             }
             (Some(code_block), None) => {
                 code.push_str(code_block);
             }
             (Some(code_block), Some(format_part)) => {
                 code.push_str(code_block);
-                code.push_str(&format!(
-                    r#"result.push_str(&format!("{{{}}}"));"#,
-                    format_part
-                ));
+                code.push_str(&format_part.to_code());
             }
         }
     }
@@ -410,20 +447,14 @@ fn handle_input(input: &str) -> Result<String, MatchError> {
         match obtain_format_part(code_block) {
             (None, None) => unreachable!(),
             (None, Some(format_part)) => {
-                code.push_str(&format!(
-                    r#"result.push_str(&format!("{{{}}}"));"#,
-                    format_part
-                ));
+                code.push_str(&format_part.to_code());
             }
             (Some(code_block), None) => {
                 code.push_str(code_block);
             }
             (Some(code_block), Some(format_part)) => {
                 code.push_str(code_block);
-                code.push_str(&format!(
-                    r#"result.push_str(&format!("{{{}}}"));"#,
-                    format_part
-                ));
+                code.push_str(&format_part.to_code());
             }
         }
     }
