@@ -1,6 +1,6 @@
 # remplate
 
-Compile-time templating that feels Rust-native
+Templating that feels Rust-native
 
 ## Usage
 
@@ -18,7 +18,7 @@ Compile-time templating that feels Rust-native
 
 {
     let debug_info = if debug_enabled {
-        Some("debugging is enabled")
+        Some("debug is enabled")
     } else {
         None
     };
@@ -50,5 +50,5 @@ fn main() {
 
 <p>Lorem ipsum etc.</p>
 
-Some("debugging is enabled")
+Some("debug is enabled")
 ```
