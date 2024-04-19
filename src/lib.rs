@@ -5,21 +5,61 @@ use std::{
 
 mod parsing;
 
-struct FormatPart<'a> {
+enum TemplateExpression<'a> {
+    CodeBlock(&'a str),
+    CodeBlockWithFormattable(&'a str, Formattable<'a>),
+    Formattable(Formattable<'a>),
+}
+
+impl<'a> TemplateExpression<'a> {
+    fn to_code(&self) -> String {
+        match self {
+            TemplateExpression::CodeBlock(code) => code.to_string(),
+            TemplateExpression::CodeBlockWithFormattable(code, formattable) => {
+                format!("{}\n{}", code, formattable.to_code())
+            }
+            TemplateExpression::Formattable(formattable) => formattable.to_code(),
+        }
+    }
+}
+
+impl<'a> TryFrom<&'a str> for TemplateExpression<'a> {
+    type Error = ();
+
+    fn try_from(code_block: &'a str) -> Result<Self, Self::Error> {
+        match code_block.rfind(';') {
+            Some(position) => match code_block[(position + 1)..].trim() {
+                "" => Ok(TemplateExpression::CodeBlock(&code_block[..position + 1])),
+                format_part => Ok(TemplateExpression::CodeBlockWithFormattable(
+                    &code_block[..position + 1],
+                    Formattable::from(format_part),
+                )),
+            },
+            None => match code_block.trim() {
+                "" => Err(()),
+                format_part => Ok(TemplateExpression::Formattable(Formattable::from(
+                    format_part,
+                ))),
+            },
+        }
+    }
+}
+
+struct Formattable<'a> {
     expression: &'a str,
     formatting: Option<&'a str>,
 }
 
-impl<'a> From<&'a str> for FormatPart<'a> {
+impl<'a> From<&'a str> for Formattable<'a> {
     fn from(value: &'a str) -> Self {
         if let Some(position) = value.find(':') {
             let (expression, formatting) = value.split_at(position);
-            FormatPart {
+            Formattable {
                 expression,
                 formatting: Some(formatting),
             }
         } else {
-            FormatPart {
+            Formattable {
                 expression: value,
                 formatting: None,
             }
@@ -27,44 +67,20 @@ impl<'a> From<&'a str> for FormatPart<'a> {
     }
 }
 
-impl<'a> FormatPart<'a> {
+impl<'a> Formattable<'a> {
     fn to_code(&self) -> String {
         match self {
-            FormatPart {
+            Formattable {
                 expression,
                 formatting: Some(format_part),
             } => format!(
                 r#"result.push_str(&format!("{{{}}}", {}));"#,
                 format_part, expression
             ),
-            FormatPart {
+            Formattable {
                 expression,
                 formatting: None,
             } => format!(r#"result.push_str(&format!("{{{}}}"));"#, expression),
-        }
-    }
-}
-
-fn obtain_format_part(code_block: &str) -> (Option<&str>, Option<FormatPart>) {
-    match code_block.rfind(';') {
-        Some(position) => {
-            let format_part = match code_block[(position + 1)..].trim() {
-                "" => None,
-                other => Some(other),
-            };
-
-            (
-                Some(&code_block[..position + 1]),
-                format_part.map(FormatPart::from),
-            )
-        }
-        None => {
-            let format_part = match code_block.trim() {
-                "" => None,
-                other => Some(other),
-            };
-
-            (None, format_part.map(FormatPart::from))
         }
     }
 }
@@ -82,43 +98,22 @@ fn handle_input(input: &str) -> Result<String, parsing::MatchError> {
     let end = "result";
 
     if let Some(code_block) = &code_block_fragments.pop_front() {
-        match obtain_format_part(code_block) {
-            (None, None) => unreachable!(),
-            (None, Some(format_part)) => {
-                code.push_str(&format_part.to_code());
-            }
-            (Some(code_block), None) => {
-                code.push_str(code_block);
-            }
-            (Some(code_block), Some(format_part)) => {
-                code.push_str(code_block);
-                code.push_str(&format_part.to_code());
-            }
+        if let Ok(expression) = TemplateExpression::try_from(code_block.as_str()) {
+            code.push_str(&expression.to_code());
         }
     }
 
     for (template, code_block) in iter::zip(&template_fragments, &code_block_fragments) {
         code.push_str(&format!(r#"result.push_str("{}");"#, template));
 
-        match obtain_format_part(code_block) {
-            (None, None) => unreachable!(),
-            (None, Some(format_part)) => {
-                code.push_str(&format_part.to_code());
-            }
-            (Some(code_block), None) => {
-                code.push_str(code_block);
-            }
-            (Some(code_block), Some(format_part)) => {
-                code.push_str(code_block);
-                code.push_str(&format_part.to_code());
-            }
+        if let Ok(expression) = TemplateExpression::try_from(code_block.as_str()) {
+            code.push_str(&expression.to_code());
         }
     }
 
     if let Some(template_part) = template_fragments.pop_back() {
         code.push_str(&format!(r#"result.push_str("{}");"#, template_part));
     }
-    //
 
     code.push_str(end);
 
