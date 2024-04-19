@@ -1,5 +1,3 @@
-use std::collections::VecDeque;
-
 #[derive(Debug, PartialEq, Eq)]
 enum BlockMatchState {
     Matching { start: usize, current: usize },
@@ -49,9 +47,9 @@ impl std::default::Default for ParseState {
 }
 
 #[derive(Debug)]
-pub struct ParseResult {
-    pub code_block_fragments: VecDeque<String>,
-    pub template_fragments: VecDeque<String>,
+pub struct ParseResult<'a> {
+    pub code_block_fragments: Vec<&'a str>,
+    pub template_fragments: Vec<&'a str>,
 }
 
 #[derive(Debug)]
@@ -296,18 +294,18 @@ pub fn parse_template(input: &str) -> Result<ParseResult, MatchError> {
     match parse_state.last_index {
         BlockMatchState::Matching { start, .. } => Err(MatchError(start - 1, input.to_string())),
         BlockMatchState::Matched(_) => {
-            let mut code_block_fragments = VecDeque::new();
-            let mut template_fragments = VecDeque::new();
+            let mut code_block_fragments = Vec::new();
+            let mut template_fragments = Vec::new();
             let mut last_block_end = 0;
 
             for block in parse_state.code_block_ranges.iter() {
-                template_fragments.push_back(input[last_block_end..(block.start - 1)].to_string());
-                code_block_fragments.push_back(input[block.start..block.end].to_string());
+                template_fragments.push(&input[last_block_end..(block.start - 1)]);
+                code_block_fragments.push(&input[block.start..block.end]);
                 last_block_end = block.end + 1;
             }
 
             if let Some(last_template_fragment) = input.get(last_block_end..) {
-                template_fragments.push_back(last_template_fragment.to_string());
+                template_fragments.push(last_template_fragment);
             }
 
             Ok(ParseResult {

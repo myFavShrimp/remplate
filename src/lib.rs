@@ -87,31 +87,31 @@ impl<'a> Formattable<'a> {
 
 fn handle_input(input: &str) -> Result<String, parsing::MatchError> {
     let parsing::ParseResult {
-        mut code_block_fragments,
-        mut template_fragments,
+        code_block_fragments,
+        template_fragments,
     } = parsing::parse_template(input)?;
 
     let mut code = format!(
         r#"let mut result = String::from("{}");"#,
-        &template_fragments.pop_front().unwrap()
+        &template_fragments.first().unwrap()
     );
     let end = "result";
 
-    if let Some(code_block) = &code_block_fragments.pop_front() {
-        if let Ok(expression) = TemplateExpression::try_from(code_block.as_str()) {
+    if let Some(code_block) = code_block_fragments.first() {
+        if let Ok(expression) = TemplateExpression::try_from(*code_block) {
             code.push_str(&expression.to_code());
         }
     }
 
-    for (template, code_block) in iter::zip(&template_fragments, &code_block_fragments) {
+    for (template, code_block) in iter::zip(&template_fragments, &code_block_fragments).skip(1) {
         code.push_str(&format!(r#"result.push_str("{}");"#, template));
 
-        if let Ok(expression) = TemplateExpression::try_from(code_block.as_str()) {
+        if let Ok(expression) = TemplateExpression::try_from(*code_block) {
             code.push_str(&expression.to_code());
         }
     }
 
-    if let Some(template_part) = template_fragments.pop_back() {
+    if let Some(template_part) = template_fragments.last() {
         code.push_str(&format!(r#"result.push_str("{}");"#, template_part));
     }
 
