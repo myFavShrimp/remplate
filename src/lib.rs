@@ -416,14 +416,11 @@ fn handle_input(input: &str) -> Result<String, MatchError> {
         template_fragments.push_back(last_template_fragment.to_string());
     }
 
-    let start = format!(
+    let mut code = format!(
         r#"let mut result = String::from("{}");"#,
         &template_fragments.pop_front().unwrap()
     );
     let end = "result";
-    let mut code = String::new();
-
-    code.push_str(&start);
 
     if let Some(code_block) = &code_blocks.pop_front() {
         match obtain_format_part(code_block) {
