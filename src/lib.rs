@@ -1,5 +1,4 @@
 use std::{
-    collections::VecDeque,
     iter,
     path::{Path, PathBuf},
 };
@@ -71,21 +70,10 @@ fn obtain_format_part(code_block: &str) -> (Option<&str>, Option<FormatPart>) {
 }
 
 fn handle_input(input: &str) -> Result<String, parsing::MatchError> {
-    let parse_result = parsing::parse_template(input)?;
-
-    let mut code_blocks = VecDeque::new();
-    let mut template_fragments = VecDeque::new();
-    let mut last_block_end = 0;
-
-    for block in parse_result.code_block_ranges.iter() {
-        template_fragments.push_back(input[last_block_end..(block.start - 1)].to_string());
-        code_blocks.push_back(input[block.start..block.end].to_string());
-        last_block_end = block.end + 1;
-    }
-
-    if let Some(last_template_fragment) = input.get(last_block_end..) {
-        template_fragments.push_back(last_template_fragment.to_string());
-    }
+    let parsing::ParseResult {
+        mut code_block_fragments,
+        mut template_fragments,
+    } = parsing::parse_template(input)?;
 
     let mut code = format!(
         r#"let mut result = String::from("{}");"#,
@@ -93,7 +81,7 @@ fn handle_input(input: &str) -> Result<String, parsing::MatchError> {
     );
     let end = "result";
 
-    if let Some(code_block) = &code_blocks.pop_front() {
+    if let Some(code_block) = &code_block_fragments.pop_front() {
         match obtain_format_part(code_block) {
             (None, None) => unreachable!(),
             (None, Some(format_part)) => {
@@ -109,7 +97,7 @@ fn handle_input(input: &str) -> Result<String, parsing::MatchError> {
         }
     }
 
-    for (template, code_block) in iter::zip(&template_fragments, &code_blocks) {
+    for (template, code_block) in iter::zip(&template_fragments, &code_block_fragments) {
         code.push_str(&format!(r#"result.push_str("{}");"#, template));
 
         match obtain_format_part(code_block) {

@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+
 #[derive(Debug, PartialEq, Eq)]
 enum BlockMatchState {
     Matching { start: usize, current: usize },
@@ -30,7 +32,7 @@ struct ParseState {
     rust_string: Option<StringMatchState>,
     last_index: BlockMatchState,
     open_nested_code_blocks: usize,
-    code_blocks: Vec<CodeBlockRange>,
+    code_block_ranges: Vec<CodeBlockRange>,
     escaped_braces: Vec<usize>,
 }
 
@@ -40,7 +42,7 @@ impl std::default::Default for ParseState {
             rust_string: None,
             last_index: BlockMatchState::Matched(0),
             open_nested_code_blocks: 0,
-            code_blocks: Vec::new(),
+            code_block_ranges: Vec::new(),
             escaped_braces: Vec::new(),
         }
     }
@@ -48,7 +50,8 @@ impl std::default::Default for ParseState {
 
 #[derive(Debug)]
 pub struct ParseResult {
-    pub code_block_ranges: Vec<CodeBlockRange>,
+    pub code_block_fragments: VecDeque<String>,
+    pub template_fragments: VecDeque<String>,
 }
 
 #[derive(Debug)]
@@ -247,7 +250,7 @@ pub fn parse_template(input: &str) -> Result<ParseResult, MatchError> {
                                 parse_state.open_nested_code_blocks -= 1;
                             } else {
                                 parse_state.last_index = BlockMatchState::Matched(last_index + 1);
-                                parse_state.code_blocks.push(CodeBlockRange {
+                                parse_state.code_block_ranges.push(CodeBlockRange {
                                     start: matching_start,
                                     end: last_index,
                                 });
@@ -292,8 +295,25 @@ pub fn parse_template(input: &str) -> Result<ParseResult, MatchError> {
 
     match parse_state.last_index {
         BlockMatchState::Matching { start, .. } => Err(MatchError(start - 1, input.to_string())),
-        BlockMatchState::Matched(_) => Ok(ParseResult {
-            code_block_ranges: parse_state.code_blocks,
-        }),
+        BlockMatchState::Matched(_) => {
+            let mut code_block_fragments = VecDeque::new();
+            let mut template_fragments = VecDeque::new();
+            let mut last_block_end = 0;
+
+            for block in parse_state.code_block_ranges.iter() {
+                template_fragments.push_back(input[last_block_end..(block.start - 1)].to_string());
+                code_block_fragments.push_back(input[block.start..block.end].to_string());
+                last_block_end = block.end + 1;
+            }
+
+            if let Some(last_template_fragment) = input.get(last_block_end..) {
+                template_fragments.push_back(last_template_fragment.to_string());
+            }
+
+            Ok(ParseResult {
+                code_block_fragments,
+                template_fragments,
+            })
+        }
     }
 }
