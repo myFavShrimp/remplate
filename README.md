@@ -14,7 +14,7 @@ Templating that feels Rust-native
 
 <h1>{ title }</h1>
 
-<p>{paragraph}</p>
+<p>{ paragraph }</p>
 
 {
     let debug_info = if debug_enabled {
@@ -30,12 +30,12 @@ Templating that feels Rust-native
 ```rust
 // src/main.rs
 
-fn my_template(debug_enabled: bool) -> String {
+fn my_template(debug_enabled: bool) -> Result<String, core::fmt::Error> {
     remplate::remplate!("my_template.html")
 }
 
 fn main() {
-    println!("{}", my_template(true));
+    println!("{}", my_template(true).unwrap());
 }
 ```
 
