@@ -1,5 +1,4 @@
 use std::{
-    fmt::Write,
     iter,
     path::{Path, PathBuf},
 };
@@ -75,13 +74,13 @@ impl<'a> Formattable<'a> {
                 expression,
                 formatting: Some(format_part),
             } => format!(
-                r#"result.write_fmt(format_args!("{{{}}}", {}));"#,
+                r#"result.write_fmt(format_args!("{{{}}}", {}))?;"#,
                 format_part, expression
             ),
             Formattable {
                 expression,
                 formatting: None,
-            } => format!(r#"result.write_fmt(format_args!("{{{}}}"));"#, expression),
+            } => format!(r#"result.write_fmt(format_args!("{{{}}}"))?;"#, expression),
         }
     }
 }
@@ -104,11 +103,11 @@ fn handle_input(input: &str) -> Result<String, parsing::MatchError> {
     );
 
     code.push_str(&format!(
-        r#"result.write_str("{}");"#,
+        r#"result.write_str("{}")?;"#,
         &template_fragments.first().unwrap()
     ));
 
-    let end = "result";
+    let end = "::core::result::Result::Ok::<::std::string::String, ::core::fmt::Error>(result)";
 
     if let Some(code_block) = code_block_fragments.first() {
         if let Ok(expression) = TemplateExpression::try_from(*code_block) {
@@ -117,7 +116,7 @@ fn handle_input(input: &str) -> Result<String, parsing::MatchError> {
     }
 
     for (template, code_block) in iter::zip(&template_fragments, &code_block_fragments).skip(1) {
-        code.push_str(&format!(r#"result.write_str("{}");"#, template));
+        code.push_str(&format!(r#"result.write_str("{}")?;"#, template));
 
         if let Ok(expression) = TemplateExpression::try_from(*code_block) {
             code.push_str(&expression.to_code());
@@ -125,7 +124,7 @@ fn handle_input(input: &str) -> Result<String, parsing::MatchError> {
     }
 
     if let Some(template_part) = template_fragments.last() {
-        code.push_str(&format!(r#"result.write_str("{}");"#, template_part));
+        code.push_str(&format!(r#"result.write_str("{}")?;"#, template_part));
     }
 
     code.push_str(end);
@@ -186,10 +185,10 @@ pub fn remplate(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     };
 
     format!(
-        r"{{
+        r"(||{{
             {}
             {}
-        }}",
+        }})()",
         create_include_bytes(&canonicalized_path),
         match handle_input(&file_content) {
             Ok(definition) => definition,
