@@ -1,4 +1,5 @@
 use std::{
+    fmt::Write,
     iter,
     path::{Path, PathBuf},
 };
@@ -74,13 +75,13 @@ impl<'a> Formattable<'a> {
                 expression,
                 formatting: Some(format_part),
             } => format!(
-                r#"result.push_str(&format!("{{{}}}", {}));"#,
+                r#"result.write_fmt(format_args!("{{{}}}", {}));"#,
                 format_part, expression
             ),
             Formattable {
                 expression,
                 formatting: None,
-            } => format!(r#"result.push_str(&format!("{{{}}}"));"#, expression),
+            } => format!(r#"result.write_fmt(format_args!("{{{}}}"));"#, expression),
         }
     }
 }
@@ -91,10 +92,22 @@ fn handle_input(input: &str) -> Result<String, parsing::MatchError> {
         template_fragments,
     } = parsing::parse_template(input)?;
 
+    let template_size_estimation = (template_fragments
+        .iter()
+        .fold(0, |acc, fragment| acc + fragment.len()))
+        + (code_block_fragments.len() * core::mem::size_of::<i64>() * 2);
+
     let mut code = format!(
-        r#"let mut result = String::from("{}");"#,
-        &template_fragments.first().unwrap()
+        r#"use ::core::fmt::Write;
+        let mut result = String::with_capacity({});"#,
+        template_size_estimation
     );
+
+    code.push_str(&format!(
+        r#"result.write_str("{}");"#,
+        &template_fragments.first().unwrap()
+    ));
+
     let end = "result";
 
     if let Some(code_block) = code_block_fragments.first() {
@@ -104,7 +117,7 @@ fn handle_input(input: &str) -> Result<String, parsing::MatchError> {
     }
 
     for (template, code_block) in iter::zip(&template_fragments, &code_block_fragments).skip(1) {
-        code.push_str(&format!(r#"result.push_str("{}");"#, template));
+        code.push_str(&format!(r#"result.write_str("{}");"#, template));
 
         if let Ok(expression) = TemplateExpression::try_from(*code_block) {
             code.push_str(&expression.to_code());
@@ -112,7 +125,7 @@ fn handle_input(input: &str) -> Result<String, parsing::MatchError> {
     }
 
     if let Some(template_part) = template_fragments.last() {
-        code.push_str(&format!(r#"result.push_str("{}");"#, template_part));
+        code.push_str(&format!(r#"result.write_str("{}");"#, template_part));
     }
 
     code.push_str(end);

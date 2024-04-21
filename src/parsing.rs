@@ -78,8 +78,6 @@ impl MatchError {
         let mut pointer: String = (0..allowed_erroneous_slice_length).map(|_| " ").collect();
         pointer.push('^');
 
-        // pointer.replace_range(pointer_pos..(pointer_pos + 1), "^");
-
         panic!(
             "Failed to find closing token for `{}` at position {}:\n\"{}\"\n{}",
             erroneous_character, erroneous_character_position, erroneous_slice, pointer
