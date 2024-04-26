@@ -1,7 +1,3 @@
-[package]
-name = "remplate"
-version = "0.1.0"
-edition = "2021"
-
-[lib]
-proc-macro = true
+[workspace]
+members = ["remplate-macros"]
+resolver = "2"

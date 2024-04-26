@@ -21,7 +21,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "remplate-macros"
+name = "remplate"
 version = "0.1.0"
 dependencies = [
  "syn",
