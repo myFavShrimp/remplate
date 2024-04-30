@@ -21,9 +21,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "remplate"
+version = "0.1.0"
+dependencies = [
+ "remplate-macros",
+]
+
+[[package]]
 name = "remplate-macros"
 version = "0.1.0"
 dependencies = [
+ "proc-macro2",
+ "quote",
  "syn",
 ]
 
