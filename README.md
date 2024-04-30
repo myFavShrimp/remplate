@@ -2,6 +2,11 @@
 
 Templating that feels Rust-native
 
+## Features
+
+- regular Rust syntax in code blocks
+- support for `format!`-macro syntax
+
 ## Usage
 
 ```rust
@@ -30,12 +35,20 @@ Templating that feels Rust-native
 ```rust
 // src/main.rs
 
-fn my_template(debug_enabled: bool) -> Result<String, core::fmt::Error> {
-    remplate::remplate!("my_template.html")
+#[derive(remplate::Remplate)]
+#[remplate(path = "my_template.html")]
+struct MyTemplate {
+    debug_enabled: bool,
 }
 
+
 fn main() {
-    println!("{}", my_template(true).unwrap());
+    println!(
+        "{}",
+        MyTemplate {
+            debug_enabled: true
+        }
+    );
 }
 ```
 
