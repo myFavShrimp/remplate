@@ -22,7 +22,7 @@ Templating that feels Rust-native
 <p>{ paragraph }</p>
 
 {
-    let debug_info = if debug_enabled {
+    let debug_info = if self.debug_enabled {
         Some("debug is enabled")
     } else {
         None
