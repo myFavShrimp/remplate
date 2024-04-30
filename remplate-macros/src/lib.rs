@@ -102,22 +102,16 @@ impl<'a> Formattable<'a> {
     }
 }
 
-fn handle_input(
-    input: &str,
-) -> Result<(proc_macro2::TokenStream, proc_macro2::TokenStream), parsing::MatchError> {
+fn handle_input(input: &str) -> Result<(usize, proc_macro2::TokenStream), parsing::MatchError> {
     let parsing::ParseResult {
         code_block_fragments,
         template_fragments,
     } = parsing::parse_template(input)?;
 
-    let template_size_estimation = (template_fragments
+    let estimated_template_size = (template_fragments
         .iter()
         .fold(0, |acc, fragment| acc + fragment.len()))
         + (code_block_fragments.len() * core::mem::size_of::<i64>() * 2);
-
-    let string_allocation_part = quote::quote! {
-        let mut f = String::with_capacity(#template_size_estimation);
-    };
 
     let mut code = quote::quote! {
         use ::core::fmt::Write;
@@ -156,7 +150,7 @@ fn handle_input(
 
     code.extend(end);
 
-    Ok((string_allocation_part, code))
+    Ok((estimated_template_size, code))
 }
 
 fn create_include_bytes(file_path: &PathBuf) -> proc_macro2::TokenStream {
@@ -201,7 +195,7 @@ where
 }
 
 struct RemplateResult {
-    string_allocation_part: proc_macro2::TokenStream,
+    estimated_template_size: usize,
     remplate_code: proc_macro2::TokenStream,
     include_bytes_part: proc_macro2::TokenStream,
 }
@@ -217,40 +211,16 @@ fn handle_remplate_path(path: &str) -> RemplateResult {
         Err(error) => panic!("{:?}", error),
     };
 
-    let (string_allocation_part, code) = match handle_input(&file_content) {
+    let (estimated_template_size, code) = match handle_input(&file_content) {
         Ok(definition) => definition,
         Err(error) => error.abort_with_error(),
     };
 
-    quote::quote! {};
-
     RemplateResult {
-        string_allocation_part,
+        estimated_template_size,
         remplate_code: code,
         include_bytes_part: create_include_bytes(&canonicalized_path),
     }
-}
-
-#[proc_macro]
-pub fn remplate(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    let input_str = input.to_string();
-    let template_path = input_str.trim_matches('"');
-
-    let RemplateResult {
-        string_allocation_part,
-        remplate_code,
-        include_bytes_part,
-    } = handle_remplate_path(template_path);
-
-    quote::quote! {
-        (||{
-            #include_bytes_part
-            #string_allocation_part
-            #remplate_code
-            ::core::result::Result::Ok::<::std::string::String, ::core::fmt::Error>(f)
-        })()
-    }
-    .into()
 }
 
 mod kw {
@@ -297,7 +267,7 @@ pub fn derive_remplate(item: proc_macro::TokenStream) -> proc_macro::TokenStream
     };
 
     let RemplateResult {
-        string_allocation_part: _,
+        estimated_template_size,
         remplate_code,
         include_bytes_part,
     } = handle_remplate_path(&template_path);
@@ -310,7 +280,9 @@ pub fn derive_remplate(item: proc_macro::TokenStream) -> proc_macro::TokenStream
                 Ok(())
             }
         }
-        impl #impl_generics ::remplate::Remplate for #impl_type #ty_generics #where_clause {};
+        impl #impl_generics ::remplate::Remplate for #impl_type #ty_generics #where_clause {
+            const ESTIMATED_SIZE: usize = #estimated_template_size;
+        };
     }
     .into()
 }
