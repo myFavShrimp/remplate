@@ -44,7 +44,7 @@ impl std::default::Default for ParseState {
 
 #[derive(Debug)]
 pub struct ParseResult<'a> {
-    pub code_block_fragments: Vec<&'a str>,
+    pub code_block_fragment_ranges: Vec<Range<usize>>,
     pub template_fragments: Vec<&'a str>,
 }
 
@@ -293,7 +293,7 @@ pub fn parse_template(input: &str) -> Result<ParseResult, MatchError> {
 
             for block in parse_state.code_block_ranges.iter() {
                 template_fragments.push(&input[last_block_end..(block.start - 1)]);
-                code_block_fragments.push(&input[block.clone()]);
+                code_block_fragments.push(block.clone());
                 last_block_end = block.end + 1;
             }
 
@@ -302,7 +302,7 @@ pub fn parse_template(input: &str) -> Result<ParseResult, MatchError> {
             }
 
             Ok(ParseResult {
-                code_block_fragments,
+                code_block_fragment_ranges: code_block_fragments,
                 template_fragments,
             })
         }

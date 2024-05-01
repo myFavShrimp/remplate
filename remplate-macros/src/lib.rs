@@ -129,18 +129,18 @@ impl<'a> ToTokens for Formattable<'a> {
     }
 }
 
-fn handle_input(
-    input: &str,
+fn handle_template(
+    template: &str,
 ) -> Result<(usize, proc_macro2::TokenStream), template_parsing::MatchError> {
     let template_parsing::ParseResult {
-        code_block_fragments,
+        code_block_fragment_ranges,
         template_fragments,
-    } = template_parsing::parse_template(input)?;
+    } = template_parsing::parse_template(template)?;
 
     let estimated_template_size = (template_fragments
         .iter()
         .fold(0, |acc, fragment| acc + fragment.len()))
-        + (code_block_fragments.len() * core::mem::size_of::<i64>() * 2);
+        + (code_block_fragment_ranges.len() * core::mem::size_of::<i64>() * 2);
 
     let mut code = quote::quote! {
         use ::core::fmt::Write;
@@ -155,18 +155,20 @@ fn handle_input(
 
     let end = quote::quote! {};
 
-    if let Some(code_block) = code_block_fragments.first() {
-        if let Ok(expression) = TemplateExpression::try_from(*code_block) {
+    if let Some(block_range) = code_block_fragment_ranges.first() {
+        if let Ok(expression) = TemplateExpression::try_from(&template[block_range.clone()]) {
             expression.to_tokens(&mut code);
         }
     }
 
-    for (template, code_block) in iter::zip(&template_fragments, &code_block_fragments).skip(1) {
+    for (template_fragment, block_range) in
+        iter::zip(&template_fragments, &code_block_fragment_ranges).skip(1)
+    {
         code.extend(quote::quote! {
-            f.write_str(#template)?;
+            f.write_str(#template_fragment)?;
         });
 
-        if let Ok(expression) = TemplateExpression::try_from(*code_block) {
+        if let Ok(expression) = TemplateExpression::try_from(&template[block_range.clone()]) {
             expression.to_tokens(&mut code);
         }
     }
@@ -240,7 +242,7 @@ fn handle_remplate_path(path: &str) -> RemplateResult {
         Err(error) => panic!("{:?}", error),
     };
 
-    let (estimated_template_size, code) = match handle_input(&file_content) {
+    let (estimated_template_size, code) = match handle_template(&file_content) {
         Ok(definition) => definition,
         Err(error) => error.abort_with_error(),
     };
