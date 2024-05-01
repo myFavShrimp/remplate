@@ -53,7 +53,7 @@ pub struct ParseResult {
     pub template_fragment_ranges: Vec<Range<usize>>,
 }
 
-pub fn parse_template<'a>(input: &'a str) -> Result<ParseResult, TemplateError<'a>> {
+pub fn parse_template(input: &str) -> Result<ParseResult, TemplateError> {
     let mut parse_state = ParseState {
         last_index: BlockMatchState::Matched(0),
         ..Default::default()

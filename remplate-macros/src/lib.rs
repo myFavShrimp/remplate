@@ -166,9 +166,7 @@ impl<'a> ToTokens for Formattable<'a> {
     }
 }
 
-fn create_code<'a>(
-    template: &'a str,
-) -> Result<(usize, proc_macro2::TokenStream), TemplateError<'a>> {
+fn create_code(template: &str) -> Result<(usize, proc_macro2::TokenStream), TemplateError> {
     let template_parsing::ParseResult {
         code_block_fragment_ranges,
         template_fragment_ranges,
