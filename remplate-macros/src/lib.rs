@@ -4,9 +4,11 @@ use std::{
     str::FromStr,
 };
 
+use error::TemplateError;
 use macro_parsing::MacroParseResult;
 use quote::ToTokens;
 
+mod error;
 mod macro_parsing;
 mod template_parsing;
 
@@ -129,9 +131,7 @@ impl<'a> ToTokens for Formattable<'a> {
     }
 }
 
-fn handle_template(
-    template: &str,
-) -> Result<(usize, proc_macro2::TokenStream), template_parsing::MatchError> {
+fn create_code(template: &str) -> Result<(usize, proc_macro2::TokenStream), TemplateError> {
     let template_parsing::ParseResult {
         code_block_fragment_ranges,
         template_fragment_ranges,
@@ -195,65 +195,61 @@ fn create_include_bytes(file_path: &PathBuf) -> proc_macro2::TokenStream {
 }
 
 #[derive(Debug)]
-struct PathResolutionError {
-    path: PathBuf,
-    source: std::io::Error,
+enum PathCanonicalizationError {
+    CargoManifestDirVariable(std::env::VarError),
+    IoError {
+        path: PathBuf,
+        source: std::io::Error,
+    },
 }
 
-impl std::fmt::Display for PathResolutionError {
+impl std::fmt::Display for PathCanonicalizationError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!("{} - {:?}", self.source, self.path))
+        match self {
+            PathCanonicalizationError::CargoManifestDirVariable(error) => {
+                f.write_fmt(format_args!("CARGO_MANIFEST_DIR - {:?}", error))
+            }
+            PathCanonicalizationError::IoError { path, source } => {
+                f.write_fmt(format_args!("{} - {:?}", source, path))
+            }
+        }
     }
 }
 
-impl From<(PathBuf, std::io::Error)> for PathResolutionError {
+impl From<(PathBuf, std::io::Error)> for PathCanonicalizationError {
     fn from(value: (PathBuf, std::io::Error)) -> Self {
-        Self {
+        Self::IoError {
             path: value.0,
             source: value.1,
         }
     }
 }
 
-fn canonicalize_path<P>(path: P) -> Result<PathBuf, PathResolutionError>
+fn canonicalize_path<P>(path: P) -> Result<PathBuf, PathCanonicalizationError>
 where
     P: AsRef<Path>,
 {
     let mut canonicalized_path = PathBuf::from(
-        std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR environment variable"),
+        std::env::var("CARGO_MANIFEST_DIR")
+            .map_err(PathCanonicalizationError::CargoManifestDirVariable)?,
     );
     canonicalized_path.push(path.as_ref());
 
     std::fs::canonicalize(canonicalized_path.clone()).map_err(|e| (canonicalized_path, e).into())
 }
 
-struct RemplateResult {
+struct RemplateData {
     estimated_template_size: usize,
     remplate_code: proc_macro2::TokenStream,
-    include_bytes_part: proc_macro2::TokenStream,
 }
 
-fn handle_remplate_path(path: &str) -> RemplateResult {
-    let canonicalized_path = match canonicalize_path(path) {
-        Ok(path) => path,
-        Err(error) => panic!("{}", error),
-    };
+fn handle_template(template: &str) -> Result<RemplateData, TemplateError> {
+    let (estimated_template_size, code) = create_code(&template)?;
 
-    let file_content = match std::fs::read_to_string(&canonicalized_path) {
-        Ok(content) => content,
-        Err(error) => panic!("{:?}", error),
-    };
-
-    let (estimated_template_size, code) = match handle_template(&file_content) {
-        Ok(definition) => definition,
-        Err(error) => error.abort_with_error(),
-    };
-
-    RemplateResult {
+    Ok(RemplateData {
         estimated_template_size,
         remplate_code: code,
-        include_bytes_part: create_include_bytes(&canonicalized_path),
-    }
+    })
 }
 
 #[proc_macro_derive(Remplate, attributes(remplate))]
@@ -269,11 +265,40 @@ pub fn derive_remplate(item: proc_macro::TokenStream) -> proc_macro::TokenStream
         Err(error) => return error.to_compile_error().into(),
     };
 
-    let RemplateResult {
+    let canonicalized_path = match canonicalize_path(template_path) {
+        Ok(path) => path,
+        Err(error) => {
+            let message = format!("{}", error);
+            return quote::quote! {
+                ::core::compile_error!(#message);
+            }
+            .into();
+        }
+    };
+
+    let template = match std::fs::read_to_string(&canonicalized_path) {
+        Ok(content) => content,
+        Err(error) => {
+            let message = format!(
+                "Unable to read template at {:?} - {}",
+                canonicalized_path, error
+            );
+            return quote::quote! {
+                ::core::compile_error!(#message);
+            }
+            .into();
+        }
+    };
+
+    let RemplateData {
         estimated_template_size,
         remplate_code,
-        include_bytes_part,
-    } = handle_remplate_path(&template_path);
+    } = match handle_template(&template) {
+        Ok(remplate_data) => remplate_data,
+        Err(error) => return error.abortion_error().into(),
+    };
+
+    let include_bytes_part = create_include_bytes(&canonicalized_path);
 
     quote::quote! {
         impl #impl_generics ::core::fmt::Display for #type_ident #type_generics #where_clause {
