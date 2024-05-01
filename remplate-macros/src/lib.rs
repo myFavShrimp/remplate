@@ -332,10 +332,9 @@ pub fn derive_remplate(item: proc_macro::TokenStream) -> proc_macro::TokenStream
                 "Unable to read template at {:?} - {}",
                 canonicalized_path, error
             );
-            return quote::quote! {
-                ::core::compile_error!(#message);
-            }
-            .into();
+            return syn::Error::new(error_span, message)
+                .into_compile_error()
+                .into();
         }
     };
 
