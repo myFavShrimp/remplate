@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 #[derive(Debug, PartialEq, Eq)]
 enum BlockMatchState {
     Matching { start: usize, current: usize },
@@ -19,18 +21,12 @@ enum StringMatchState {
     },
 }
 
-#[derive(Debug, PartialEq, Eq)]
-pub struct CodeBlockRange {
-    pub start: usize,
-    pub end: usize,
-}
-
 #[derive(Debug)]
 struct ParseState {
     rust_string: Option<StringMatchState>,
     last_index: BlockMatchState,
     open_nested_code_blocks: usize,
-    code_block_ranges: Vec<CodeBlockRange>,
+    code_block_ranges: Vec<Range<usize>>,
     escaped_braces: Vec<usize>,
 }
 
@@ -246,10 +242,9 @@ pub fn parse_template(input: &str) -> Result<ParseResult, MatchError> {
                                 parse_state.open_nested_code_blocks -= 1;
                             } else {
                                 parse_state.last_index = BlockMatchState::Matched(last_index + 1);
-                                parse_state.code_block_ranges.push(CodeBlockRange {
-                                    start: matching_start,
-                                    end: last_index,
-                                });
+                                parse_state
+                                    .code_block_ranges
+                                    .push(matching_start..last_index);
 
                                 break;
                             }
@@ -298,7 +293,7 @@ pub fn parse_template(input: &str) -> Result<ParseResult, MatchError> {
 
             for block in parse_state.code_block_ranges.iter() {
                 template_fragments.push(&input[last_block_end..(block.start - 1)]);
-                code_block_fragments.push(&input[block.start..block.end]);
+                code_block_fragments.push(&input[block.clone()]);
                 last_block_end = block.end + 1;
             }
 
