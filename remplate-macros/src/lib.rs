@@ -134,10 +134,10 @@ fn handle_template(
 ) -> Result<(usize, proc_macro2::TokenStream), template_parsing::MatchError> {
     let template_parsing::ParseResult {
         code_block_fragment_ranges,
-        template_fragments,
+        template_fragment_ranges,
     } = template_parsing::parse_template(template)?;
 
-    let estimated_template_size = (template_fragments
+    let estimated_template_size = (template_fragment_ranges
         .iter()
         .fold(0, |acc, fragment| acc + fragment.len()))
         + (code_block_fragment_ranges.len() * core::mem::size_of::<i64>() * 2);
@@ -147,7 +147,7 @@ fn handle_template(
     };
 
     {
-        let first_template_fragment = &template_fragments.first().unwrap();
+        let first_template_fragment = &template[template_fragment_ranges.first().unwrap().clone()];
         code.extend(quote::quote! {
             f.write_str(#first_template_fragment)?;
         });
@@ -161,9 +161,10 @@ fn handle_template(
         }
     }
 
-    for (template_fragment, block_range) in
-        iter::zip(&template_fragments, &code_block_fragment_ranges).skip(1)
+    for (template_fragment_range, block_range) in
+        iter::zip(&template_fragment_ranges, &code_block_fragment_ranges).skip(1)
     {
+        let template_fragment = &template[template_fragment_range.clone()];
         code.extend(quote::quote! {
             f.write_str(#template_fragment)?;
         });
@@ -173,9 +174,10 @@ fn handle_template(
         }
     }
 
-    if let Some(template_part) = template_fragments.last() {
+    if let Some(template_fragment_range) = template_fragment_ranges.last() {
+        let template_fragment = &template[template_fragment_range.clone()];
         code.extend(quote::quote! {
-            f.write_str(#template_part)?;
+            f.write_str(#template_fragment)?;
         });
     }
 

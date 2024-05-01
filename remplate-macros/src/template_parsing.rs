@@ -43,9 +43,9 @@ impl std::default::Default for ParseState {
 }
 
 #[derive(Debug)]
-pub struct ParseResult<'a> {
+pub struct ParseResult {
     pub code_block_fragment_ranges: Vec<Range<usize>>,
-    pub template_fragments: Vec<&'a str>,
+    pub template_fragment_ranges: Vec<Range<usize>>,
 }
 
 #[derive(Debug)]
@@ -287,23 +287,23 @@ pub fn parse_template(input: &str) -> Result<ParseResult, MatchError> {
     match parse_state.last_index {
         BlockMatchState::Matching { start, .. } => Err(MatchError(start - 1, input.to_string())),
         BlockMatchState::Matched(_) => {
-            let mut code_block_fragments = Vec::new();
-            let mut template_fragments = Vec::new();
+            let mut code_block_fragment_ranges = Vec::new();
+            let mut template_fragment_ranges = Vec::new();
             let mut last_block_end = 0;
 
             for block in parse_state.code_block_ranges.iter() {
-                template_fragments.push(&input[last_block_end..(block.start - 1)]);
-                code_block_fragments.push(block.clone());
+                template_fragment_ranges.push(last_block_end..(block.start - 1));
+                code_block_fragment_ranges.push(block.clone());
                 last_block_end = block.end + 1;
             }
 
-            if let Some(last_template_fragment) = input.get(last_block_end..) {
-                template_fragments.push(last_template_fragment);
+            if let Some(_) = input.get(last_block_end..input.len()) {
+                template_fragment_ranges.push(last_block_end..input.len());
             }
 
             Ok(ParseResult {
-                code_block_fragment_ranges: code_block_fragments,
-                template_fragments,
+                code_block_fragment_ranges,
+                template_fragment_ranges,
             })
         }
     }
