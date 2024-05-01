@@ -7,8 +7,7 @@ use std::{
 };
 
 use error::TemplateError;
-use macro_parsing::MacroParseResult;
-use quote::ToTokens;
+use macro_parsing::{MacroParseResult, RemplatePath};
 
 mod error;
 mod macro_parsing;
@@ -20,8 +19,8 @@ enum TemplateExpression<'a> {
     Formattable(Formattable<'a>),
 }
 
-impl<'a> ToTokens for TemplateExpression<'a> {
-    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+impl<'a> TemplateExpression<'a> {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream, error_span: proc_macro2::Span) {
         match self {
             TemplateExpression::CodeBlock(template, code_block_range) => {
                 match proc_macro2::TokenStream::from_str(&template[code_block_range.clone()]) {
@@ -41,9 +40,11 @@ impl<'a> ToTokens for TemplateExpression<'a> {
                         syn::Error::new(error.span(), error.to_string()).to_compile_error(),
                     ),
                 }
-                formattable.to_tokens(tokens);
+                formattable.to_tokens(tokens, error_span);
             }
-            TemplateExpression::Formattable(formattable) => formattable.to_tokens(tokens),
+            TemplateExpression::Formattable(formattable) => {
+                formattable.to_tokens(tokens, error_span)
+            }
         }
     }
 }
@@ -110,8 +111,8 @@ impl<'a> From<(&'a str, Range<usize>)> for Formattable<'a> {
     }
 }
 
-impl<'a> ToTokens for Formattable<'a> {
-    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+impl<'a> Formattable<'a> {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream, error_span: proc_macro2::Span) {
         tokens.extend(match self {
             Formattable {
                 template,
@@ -127,6 +128,7 @@ impl<'a> ToTokens for Formattable<'a> {
                         TEMPLATE_PATH.get().expect(INVALID_STATE_MESSAGE),
                         template,
                         error::TemplateErrorKind::MissingValue,
+                        error_span,
                     )
                     .abortion_error()
                 } else {
@@ -166,11 +168,14 @@ impl<'a> ToTokens for Formattable<'a> {
     }
 }
 
-fn create_code(template: &str) -> Result<(usize, proc_macro2::TokenStream), TemplateError> {
+fn create_code(
+    template: &str,
+    error_span: proc_macro2::Span,
+) -> Result<(usize, proc_macro2::TokenStream), TemplateError> {
     let template_parsing::ParseResult {
         code_block_fragment_ranges,
         template_fragment_ranges,
-    } = template_parsing::parse_template(template)?;
+    } = template_parsing::parse_template(template, error_span)?;
 
     let estimated_template_size = (template_fragment_ranges
         .iter()
@@ -192,7 +197,7 @@ fn create_code(template: &str) -> Result<(usize, proc_macro2::TokenStream), Temp
 
     if let Some(block_range) = code_block_fragment_ranges.first() {
         if let Ok(expression) = TemplateExpression::try_from((template, block_range.clone())) {
-            expression.to_tokens(&mut code);
+            expression.to_tokens(&mut code, error_span);
         }
     }
 
@@ -205,7 +210,7 @@ fn create_code(template: &str) -> Result<(usize, proc_macro2::TokenStream), Temp
         });
 
         if let Ok(expression) = TemplateExpression::try_from((template, block_range.clone())) {
-            expression.to_tokens(&mut code);
+            expression.to_tokens(&mut code, error_span);
         }
     }
 
@@ -278,8 +283,11 @@ struct RemplateData {
     remplate_code: proc_macro2::TokenStream,
 }
 
-fn handle_template<'a>(template: &'a str) -> Result<RemplateData, TemplateError<'a>> {
-    let (estimated_template_size, code) = create_code(template)?;
+fn handle_template<'a>(
+    template: &'a str,
+    error_span: proc_macro2::Span,
+) -> Result<RemplateData, TemplateError<'a>> {
+    let (estimated_template_size, code) = create_code(template, error_span)?;
 
     Ok(RemplateData {
         estimated_template_size,
@@ -298,7 +306,7 @@ pub fn derive_remplate(item: proc_macro::TokenStream) -> proc_macro::TokenStream
         type_generics,
         where_clause,
         type_ident,
-        template_path,
+        template_path: RemplatePath(template_path, error_span),
     } = match macro_parsing::parse_derive_macro_input(item) {
         Ok(template_path) => template_path,
         Err(error) => return error.to_compile_error().into(),
@@ -311,10 +319,9 @@ pub fn derive_remplate(item: proc_macro::TokenStream) -> proc_macro::TokenStream
         }
         Err(error) => {
             let message = format!("{}", error);
-            return quote::quote! {
-                ::core::compile_error!(#message);
-            }
-            .into();
+            return syn::Error::new(error_span, message)
+                .into_compile_error()
+                .into();
         }
     };
 
@@ -335,7 +342,7 @@ pub fn derive_remplate(item: proc_macro::TokenStream) -> proc_macro::TokenStream
     let RemplateData {
         estimated_template_size,
         remplate_code,
-    } = match handle_template(&template) {
+    } = match handle_template(&template, error_span) {
         Ok(remplate_data) => remplate_data,
         Err(error) => return error.abortion_error().into(),
     };

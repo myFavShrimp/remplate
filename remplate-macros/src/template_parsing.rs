@@ -1,4 +1,4 @@
-use std::{ops::Range, path::PathBuf};
+use std::ops::Range;
 
 use crate::{
     error::{TemplateError, TemplateErrorKind},
@@ -53,7 +53,10 @@ pub struct ParseResult {
     pub template_fragment_ranges: Vec<Range<usize>>,
 }
 
-pub fn parse_template(input: &str) -> Result<ParseResult, TemplateError> {
+pub fn parse_template(
+    input: &str,
+    error_span: proc_macro2::Span,
+) -> Result<ParseResult, TemplateError> {
     let mut parse_state = ParseState {
         last_index: BlockMatchState::Matched(0),
         ..Default::default()
@@ -234,6 +237,7 @@ pub fn parse_template(input: &str) -> Result<ParseResult, TemplateError> {
             TEMPLATE_PATH.get().expect(INVALID_STATE_MESSAGE),
             input,
             TemplateErrorKind::ClosingToken,
+            error_span,
         )),
         BlockMatchState::Matched(_) => {
             let mut code_block_fragment_ranges = Vec::new();

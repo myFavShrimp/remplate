@@ -5,7 +5,7 @@ mod kw {
     syn::custom_keyword!(path);
 }
 
-struct RemplatePath(String);
+pub struct RemplatePath(pub String, pub proc_macro2::Span);
 
 impl Parse for RemplatePath {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
@@ -13,7 +13,7 @@ impl Parse for RemplatePath {
         input.parse::<Token![=]>()?;
         let path_parameter: LitStr = input.parse()?;
 
-        Ok(Self(path_parameter.value()))
+        Ok(Self(path_parameter.value(), path_parameter.span()))
     }
 }
 
@@ -22,7 +22,7 @@ pub struct MacroParseResult {
     pub type_generics: proc_macro2::TokenStream,
     pub where_clause: Option<proc_macro2::TokenStream>,
     pub type_ident: proc_macro2::TokenStream,
-    pub template_path: String,
+    pub template_path: RemplatePath,
 }
 
 pub fn parse_derive_macro_input(
@@ -41,8 +41,7 @@ pub fn parse_derive_macro_input(
             .meta
             .require_list()
             .map(|meta_list| meta_list.tokens.clone())
-            .and_then(|tokens| syn::parse2::<RemplatePath>(tokens))
-            .map(|path| path.0)?,
+            .and_then(|tokens| syn::parse2::<RemplatePath>(tokens))?,
         None => Err(syn::parse::Error::new(input_span, "Missing template path"))?,
     };
 

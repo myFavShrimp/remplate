@@ -21,6 +21,7 @@ pub struct TemplateError<'a>(
     pub &'a PathBuf,
     pub &'a str,
     pub TemplateErrorKind,
+    pub proc_macro2::Span,
 );
 
 impl<'a> TemplateError<'a> {
@@ -31,7 +32,7 @@ impl<'a> TemplateError<'a> {
         let right_slice = self.right_erroneous_slice();
         let erroneous_character = self.erroneous_character();
 
-        let TemplateError(erroneous_character_position, path, _, error_kind) = self;
+        let TemplateError(erroneous_character_position, path, _, error_kind, span) = self;
 
         let allowed_erroneous_slice_length =
             std::cmp::min(left_slice.len() - 1, right_slice.len() - 1);
@@ -56,13 +57,11 @@ impl<'a> TemplateError<'a> {
             pointer
         );
 
-        quote::quote! {
-            ::core::compile_error!(#error_message);
-        }
+        syn::Error::new(span, error_message).into_compile_error()
     }
 
     fn left_erroneous_slice(&self) -> String {
-        let TemplateError(erroneous_character_position, _, template, _) = self;
+        let TemplateError(erroneous_character_position, _, template, _, _) = self;
         let slice_start = erroneous_character_position
             .start
             .checked_sub(Self::TEMPLATE_POINTER_PADDING)
@@ -74,7 +73,7 @@ impl<'a> TemplateError<'a> {
     }
 
     fn right_erroneous_slice(&self) -> String {
-        let TemplateError(erroneous_character_position, _, template, _) = self;
+        let TemplateError(erroneous_character_position, _, template, _, _) = self;
         let slice_end = std::cmp::min(
             erroneous_character_position.end + Self::TEMPLATE_POINTER_PADDING,
             template.len(),
@@ -86,7 +85,7 @@ impl<'a> TemplateError<'a> {
     }
 
     fn erroneous_character(&self) -> String {
-        let TemplateError(erroneous_character_position, _, template, _) = self;
+        let TemplateError(erroneous_character_position, _, template, _, _) = self;
         let erroneous_character = format!("{:?}", &template[erroneous_character_position.clone()]);
         erroneous_character[1..(erroneous_character.len() - 1)].to_string()
     }
