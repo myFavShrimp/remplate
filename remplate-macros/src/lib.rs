@@ -5,6 +5,7 @@ use std::{
 };
 
 use macro_parsing::MacroParseResult;
+use quote::ToTokens;
 
 mod macro_parsing;
 mod template_parsing;
@@ -15,18 +16,17 @@ enum TemplateExpression<'a> {
     Formattable(Formattable<'a>),
 }
 
-impl<'a> TemplateExpression<'a> {
-    fn to_code(&self) -> proc_macro2::TokenStream {
+impl<'a> ToTokens for TemplateExpression<'a> {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
         match self {
             TemplateExpression::CodeBlock(code) => {
-                proc_macro2::TokenStream::from_str(code).unwrap()
+                tokens.extend(proc_macro2::TokenStream::from_str(code).unwrap())
             }
             TemplateExpression::CodeBlockWithFormattable(code, formattable) => {
-                let mut code = proc_macro2::TokenStream::from_str(code).unwrap();
-                code.extend(formattable.to_code());
-                code
+                tokens.extend(proc_macro2::TokenStream::from_str(code).unwrap());
+                formattable.to_tokens(tokens);
             }
-            TemplateExpression::Formattable(formattable) => formattable.to_code(),
+            TemplateExpression::Formattable(formattable) => formattable.to_tokens(tokens),
         }
     }
 }
@@ -75,9 +75,9 @@ impl<'a> From<&'a str> for Formattable<'a> {
     }
 }
 
-impl<'a> Formattable<'a> {
-    fn to_code(&self) -> proc_macro2::TokenStream {
-        match self {
+impl<'a> ToTokens for Formattable<'a> {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        tokens.extend(match self {
             Formattable {
                 expression,
                 formatting: Some(format_part),
@@ -99,7 +99,7 @@ impl<'a> Formattable<'a> {
                     f.write_fmt(format_args!("{}", #expression))?;
                 }
             }
-        }
+        })
     }
 }
 
@@ -131,7 +131,7 @@ fn handle_input(
 
     if let Some(code_block) = code_block_fragments.first() {
         if let Ok(expression) = TemplateExpression::try_from(*code_block) {
-            code.extend(expression.to_code());
+            expression.to_tokens(&mut code);
         }
     }
 
@@ -141,7 +141,7 @@ fn handle_input(
         });
 
         if let Ok(expression) = TemplateExpression::try_from(*code_block) {
-            code.extend(expression.to_code());
+            expression.to_tokens(&mut code);
         }
     }
 
