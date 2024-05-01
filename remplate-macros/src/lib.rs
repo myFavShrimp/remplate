@@ -19,11 +19,18 @@ enum TemplateExpression<'a> {
 impl<'a> ToTokens for TemplateExpression<'a> {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
         match self {
-            TemplateExpression::CodeBlock(code) => {
-                tokens.extend(proc_macro2::TokenStream::from_str(code).unwrap())
-            }
+            TemplateExpression::CodeBlock(code) => match proc_macro2::TokenStream::from_str(code) {
+                Ok(code) => tokens.extend(code),
+                Err(error) => tokens
+                    .extend(syn::Error::new(error.span(), error.to_string()).to_compile_error()),
+            },
             TemplateExpression::CodeBlockWithFormattable(code, formattable) => {
-                tokens.extend(proc_macro2::TokenStream::from_str(code).unwrap());
+                match proc_macro2::TokenStream::from_str(code) {
+                    Ok(code) => tokens.extend(code),
+                    Err(error) => tokens.extend(
+                        syn::Error::new(error.span(), error.to_string()).to_compile_error(),
+                    ),
+                }
                 formattable.to_tokens(tokens);
             }
             TemplateExpression::Formattable(formattable) => formattable.to_tokens(tokens),
@@ -83,7 +90,19 @@ impl<'a> ToTokens for Formattable<'a> {
                 formatting: Some(format_part),
             } => {
                 let format_part = format!("{{{}}}", format_part);
-                let expression = proc_macro2::TokenStream::from_str(expression).unwrap();
+
+                let expression = if expression.trim().is_empty() {
+                    quote::quote! {
+                        ::core::compile_error!("A format expression misses a value")
+                    }
+                } else {
+                    match proc_macro2::TokenStream::from_str(expression) {
+                        Ok(code) => code,
+                        Err(error) => {
+                            syn::Error::new(error.span(), error.to_string()).to_compile_error()
+                        }
+                    }
+                };
 
                 quote::quote! {
                     f.write_fmt(format_args!(#format_part, #expression))?;
@@ -93,7 +112,14 @@ impl<'a> ToTokens for Formattable<'a> {
                 expression,
                 formatting: None,
             } => {
-                let expression = proc_macro2::TokenStream::from_str(expression).unwrap();
+                let expression = match proc_macro2::TokenStream::from_str(expression) {
+                    Ok(code) => code,
+                    Err(error) => syn::Error::new(
+                        error.span(),
+                        format!("Invalid expression - '{}'", expression),
+                    )
+                    .to_compile_error(),
+                };
 
                 quote::quote! {
                     f.write_fmt(format_args!("{}", #expression))?;
