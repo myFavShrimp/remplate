@@ -4,9 +4,10 @@ use std::{
     str::FromStr,
 };
 
-use syn::{parse::Parse, spanned::Spanned, LitStr, Token};
+use macro_parsing::MacroParseResult;
 
-mod parsing;
+mod macro_parsing;
+mod template_parsing;
 
 enum TemplateExpression<'a> {
     CodeBlock(&'a str),
@@ -102,11 +103,13 @@ impl<'a> Formattable<'a> {
     }
 }
 
-fn handle_input(input: &str) -> Result<(usize, proc_macro2::TokenStream), parsing::MatchError> {
-    let parsing::ParseResult {
+fn handle_input(
+    input: &str,
+) -> Result<(usize, proc_macro2::TokenStream), template_parsing::MatchError> {
+    let template_parsing::ParseResult {
         code_block_fragments,
         template_fragments,
-    } = parsing::parse_template(input)?;
+    } = template_parsing::parse_template(input)?;
 
     let estimated_template_size = (template_fragments
         .iter()
@@ -223,47 +226,17 @@ fn handle_remplate_path(path: &str) -> RemplateResult {
     }
 }
 
-mod kw {
-    syn::custom_keyword!(path);
-}
-
-struct RemplatePath(String);
-
-impl Parse for RemplatePath {
-    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
-        input.parse::<kw::path>()?;
-        input.parse::<Token![=]>()?;
-        let path_parameter: LitStr = input.parse()?;
-
-        Ok(Self(path_parameter.value()))
-    }
-}
-
 #[proc_macro_derive(Remplate, attributes(remplate))]
 pub fn derive_remplate(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    let input = syn::parse_macro_input!(item as syn::DeriveInput);
-    let input_span = input.span();
-    let impl_type = input.ident;
-    let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
-
-    let template_path = match input.attrs.into_iter().find(|attr| {
-        let attr_path = attr.meta.path();
-        attr_path.is_ident("remplate")
-    }) {
-        Some(attr) => match attr
-            .meta
-            .require_list()
-            .map(|meta_list| meta_list.tokens.clone())
-            .and_then(|tokens| syn::parse2::<RemplatePath>(tokens))
-        {
-            Ok(path) => path.0,
-            Err(error) => return error.to_compile_error().into(),
-        },
-        None => {
-            return syn::parse::Error::new(input_span, "Missing template path")
-                .to_compile_error()
-                .into()
-        }
+    let MacroParseResult {
+        impl_generics,
+        type_generics,
+        where_clause,
+        type_ident,
+        template_path,
+    } = match macro_parsing::parse_derive_macro_input(item) {
+        Ok(template_path) => template_path,
+        Err(error) => return error.to_compile_error().into(),
     };
 
     let RemplateResult {
@@ -273,14 +246,14 @@ pub fn derive_remplate(item: proc_macro::TokenStream) -> proc_macro::TokenStream
     } = handle_remplate_path(&template_path);
 
     quote::quote! {
-        impl #impl_generics ::core::fmt::Display for #impl_type #ty_generics #where_clause {
+        impl #impl_generics ::core::fmt::Display for #type_ident #type_generics #where_clause {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 #include_bytes_part
                 #remplate_code
                 Ok(())
             }
         }
-        impl #impl_generics ::remplate::Remplate for #impl_type #ty_generics #where_clause {
+        impl #impl_generics ::remplate::Remplate for #type_ident #type_generics #where_clause {
             const ESTIMATED_SIZE: usize = #estimated_template_size;
         };
     }
