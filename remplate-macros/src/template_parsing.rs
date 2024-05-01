@@ -1,6 +1,9 @@
 use std::{ops::Range, path::PathBuf};
 
-use crate::error::{TemplateError, TemplateErrorKind};
+use crate::{
+    error::{TemplateError, TemplateErrorKind},
+    INVALID_STATE_MESSAGE, TEMPLATE_PATH,
+};
 
 #[derive(Debug, PartialEq, Eq)]
 enum BlockMatchState {
@@ -50,10 +53,7 @@ pub struct ParseResult {
     pub template_fragment_ranges: Vec<Range<usize>>,
 }
 
-pub fn parse_template<'a>(
-    input: &'a str,
-    template_path: &'a PathBuf,
-) -> Result<ParseResult, TemplateError<'a>> {
+pub fn parse_template<'a>(input: &'a str) -> Result<ParseResult, TemplateError<'a>> {
     let mut parse_state = ParseState {
         last_index: BlockMatchState::Matched(0),
         ..Default::default()
@@ -231,7 +231,7 @@ pub fn parse_template<'a>(
     match parse_state.last_index {
         BlockMatchState::Matching { start, .. } => Err(TemplateError(
             (start - 1)..start,
-            template_path,
+            TEMPLATE_PATH.get().expect(INVALID_STATE_MESSAGE),
             input,
             TemplateErrorKind::ClosingToken,
         )),

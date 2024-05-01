@@ -3,6 +3,7 @@ use std::{
     ops::Range,
     path::{Path, PathBuf},
     str::FromStr,
+    sync::OnceLock,
 };
 
 use error::TemplateError;
@@ -123,7 +124,7 @@ impl<'a> ToTokens for Formattable<'a> {
                 let expression = if expression_fragment.trim().is_empty() {
                     TemplateError(
                         formatting_range.clone(),
-                        &PathBuf::new(),
+                        TEMPLATE_PATH.get().expect(INVALID_STATE_MESSAGE),
                         template,
                         error::TemplateErrorKind::MissingValue,
                     )
@@ -167,12 +168,11 @@ impl<'a> ToTokens for Formattable<'a> {
 
 fn create_code<'a>(
     template: &'a str,
-    template_path: &'a PathBuf,
 ) -> Result<(usize, proc_macro2::TokenStream), TemplateError<'a>> {
     let template_parsing::ParseResult {
         code_block_fragment_ranges,
         template_fragment_ranges,
-    } = template_parsing::parse_template(template, template_path)?;
+    } = template_parsing::parse_template(template)?;
 
     let estimated_template_size = (template_fragment_ranges
         .iter()
@@ -280,17 +280,18 @@ struct RemplateData {
     remplate_code: proc_macro2::TokenStream,
 }
 
-fn handle_template<'a>(
-    template: &'a str,
-    template_path: &'a PathBuf,
-) -> Result<RemplateData, TemplateError<'a>> {
-    let (estimated_template_size, code) = create_code(template, template_path)?;
+fn handle_template<'a>(template: &'a str) -> Result<RemplateData, TemplateError<'a>> {
+    let (estimated_template_size, code) = create_code(template)?;
 
     Ok(RemplateData {
         estimated_template_size,
         remplate_code: code,
     })
 }
+
+static TEMPLATE_PATH: OnceLock<PathBuf> = OnceLock::new();
+static INVALID_STATE_MESSAGE: &str = "Internal state should be set";
+static STATE_ALREADY_SET_MESSAGE: &str = "Internal state should be set only once";
 
 #[proc_macro_derive(Remplate, attributes(remplate))]
 pub fn derive_remplate(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
@@ -306,7 +307,10 @@ pub fn derive_remplate(item: proc_macro::TokenStream) -> proc_macro::TokenStream
     };
 
     let canonicalized_path = match canonicalize_path(template_path) {
-        Ok(path) => path,
+        Ok(path) => {
+            TEMPLATE_PATH.set(path).expect(STATE_ALREADY_SET_MESSAGE);
+            TEMPLATE_PATH.get().expect(INVALID_STATE_MESSAGE)
+        }
         Err(error) => {
             let message = format!("{}", error);
             return quote::quote! {
@@ -316,7 +320,7 @@ pub fn derive_remplate(item: proc_macro::TokenStream) -> proc_macro::TokenStream
         }
     };
 
-    let template = match std::fs::read_to_string(&canonicalized_path) {
+    let template = match std::fs::read_to_string(canonicalized_path) {
         Ok(content) => content,
         Err(error) => {
             let message = format!(
@@ -333,7 +337,7 @@ pub fn derive_remplate(item: proc_macro::TokenStream) -> proc_macro::TokenStream
     let RemplateData {
         estimated_template_size,
         remplate_code,
-    } = match handle_template(&template, &canonicalized_path) {
+    } = match handle_template(&template) {
         Ok(remplate_data) => remplate_data,
         Err(error) => return error.abortion_error().into(),
     };
