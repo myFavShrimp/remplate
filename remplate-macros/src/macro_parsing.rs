@@ -41,7 +41,7 @@ pub fn parse_derive_macro_input(
             .meta
             .require_list()
             .map(|meta_list| meta_list.tokens.clone())
-            .and_then(|tokens| syn::parse2::<RemplatePath>(tokens))?,
+            .and_then(syn::parse2::<RemplatePath>)?,
         None => Err(syn::parse::Error::new(input_span, "Missing template path"))?,
     };
 

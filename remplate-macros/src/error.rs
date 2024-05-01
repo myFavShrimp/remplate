@@ -63,9 +63,7 @@ impl<'a> TemplateError<'a> {
     fn left_erroneous_slice(&self) -> String {
         let TemplateError(erroneous_character_position, _, template, _, _) = self;
         let slice_start = erroneous_character_position
-            .start
-            .checked_sub(Self::TEMPLATE_POINTER_PADDING)
-            .unwrap_or(0);
+            .start.saturating_sub(Self::TEMPLATE_POINTER_PADDING);
         format!(
             "{:?}",
             &template[slice_start..erroneous_character_position.start]

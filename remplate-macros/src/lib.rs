@@ -283,10 +283,10 @@ struct RemplateData {
     remplate_code: proc_macro2::TokenStream,
 }
 
-fn handle_template<'a>(
-    template: &'a str,
+fn handle_template(
+    template: &str,
     error_span: proc_macro2::Span,
-) -> Result<RemplateData, TemplateError<'a>> {
+) -> Result<RemplateData, TemplateError<'_>> {
     let (estimated_template_size, code) = create_code(template, error_span)?;
 
     Ok(RemplateData {
@@ -346,7 +346,7 @@ pub fn derive_remplate(item: proc_macro::TokenStream) -> proc_macro::TokenStream
         Err(error) => return error.abortion_error().into(),
     };
 
-    let include_bytes_part = create_include_bytes(&canonicalized_path);
+    let include_bytes_part = create_include_bytes(canonicalized_path);
 
     quote::quote! {
         impl #impl_generics ::core::fmt::Display for #type_ident #type_generics #where_clause {

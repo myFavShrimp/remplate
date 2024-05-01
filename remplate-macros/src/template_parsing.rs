@@ -250,7 +250,7 @@ pub fn parse_template(
                 last_block_end = block.end + 1;
             }
 
-            if let Some(_) = input.get(last_block_end..input.len()) {
+            if input.get(last_block_end..input.len()).is_some() {
                 template_fragment_ranges.push(last_block_end..input.len());
             }
 
