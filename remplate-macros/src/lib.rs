@@ -84,8 +84,9 @@ impl<'a> TryFrom<(&'a str, Range<usize>)> for TemplateExpression<'a> {
 }
 
 struct Formattable<'a> {
-    expression: &'a str,
-    formatting: Option<&'a str>,
+    template: &'a str,
+    expression_range: Range<usize>,
+    formatting_range: Option<Range<usize>>,
 }
 
 impl<'a> From<(&'a str, Range<usize>)> for Formattable<'a> {
@@ -93,15 +94,16 @@ impl<'a> From<(&'a str, Range<usize>)> for Formattable<'a> {
         let format_expression = &template[expression_range.clone()];
 
         if let Some(position) = format_expression.find(':') {
-            let (expression, formatting) = format_expression.split_at(position);
             Formattable {
-                expression,
-                formatting: Some(formatting),
+                template,
+                expression_range: expression_range.start..(expression_range.start + position),
+                formatting_range: Some((expression_range.start + position)..expression_range.end),
             }
         } else {
             Formattable {
-                expression: format_expression,
-                formatting: None,
+                template,
+                expression_range,
+                formatting_range: None,
             }
         }
     }
@@ -111,17 +113,23 @@ impl<'a> ToTokens for Formattable<'a> {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
         tokens.extend(match self {
             Formattable {
-                expression,
-                formatting: Some(format_part),
+                template,
+                expression_range,
+                formatting_range: Some(formatting_range),
             } => {
-                let format_part = format!("{{{}}}", format_part);
+                let format_part = format!("{{{}}}", &template[formatting_range.clone()]);
+                let expression_fragment = &template[expression_range.clone()];
 
-                let expression = if expression.trim().is_empty() {
-                    quote::quote! {
-                        ::core::compile_error!("A format expression misses a value")
-                    }
+                let expression = if expression_fragment.trim().is_empty() {
+                    TemplateError(
+                        formatting_range.clone(),
+                        &PathBuf::new(),
+                        template,
+                        error::TemplateErrorKind::MissingValue,
+                    )
+                    .abortion_error()
                 } else {
-                    match proc_macro2::TokenStream::from_str(expression) {
+                    match proc_macro2::TokenStream::from_str(expression_fragment) {
                         Ok(code) => code,
                         Err(error) => {
                             syn::Error::new(error.span(), error.to_string()).to_compile_error()
@@ -134,14 +142,17 @@ impl<'a> ToTokens for Formattable<'a> {
                 }
             }
             Formattable {
-                expression,
-                formatting: None,
+                template,
+                expression_range,
+                formatting_range: None,
             } => {
-                let expression = match proc_macro2::TokenStream::from_str(expression) {
+                let expression_fragment = &template[expression_range.clone()];
+
+                let expression = match proc_macro2::TokenStream::from_str(expression_fragment) {
                     Ok(code) => code,
                     Err(error) => syn::Error::new(
                         error.span(),
-                        format!("Invalid expression - '{}'", expression),
+                        format!("Invalid expression - '{}'", expression_fragment),
                     )
                     .to_compile_error(),
                 };

@@ -1,6 +1,6 @@
 use std::{ops::Range, path::PathBuf};
 
-use crate::error::TemplateError;
+use crate::error::{TemplateError, TemplateErrorKind};
 
 #[derive(Debug, PartialEq, Eq)]
 enum BlockMatchState {
@@ -229,9 +229,12 @@ pub fn parse_template<'a>(
     }
 
     match parse_state.last_index {
-        BlockMatchState::Matching { start, .. } => {
-            Err(TemplateError(start - 1, template_path, input))
-        }
+        BlockMatchState::Matching { start, .. } => Err(TemplateError(
+            (start - 1)..start,
+            template_path,
+            input,
+            TemplateErrorKind::ClosingToken,
+        )),
         BlockMatchState::Matched(_) => {
             let mut code_block_fragment_ranges = Vec::new();
             let mut template_fragment_ranges = Vec::new();
