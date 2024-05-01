@@ -131,11 +131,14 @@ impl<'a> ToTokens for Formattable<'a> {
     }
 }
 
-fn create_code(template: &str) -> Result<(usize, proc_macro2::TokenStream), TemplateError> {
+fn create_code<'a>(
+    template: &'a str,
+    template_path: &'a PathBuf,
+) -> Result<(usize, proc_macro2::TokenStream), TemplateError<'a>> {
     let template_parsing::ParseResult {
         code_block_fragment_ranges,
         template_fragment_ranges,
-    } = template_parsing::parse_template(template)?;
+    } = template_parsing::parse_template(template, template_path)?;
 
     let estimated_template_size = (template_fragment_ranges
         .iter()
@@ -243,8 +246,11 @@ struct RemplateData {
     remplate_code: proc_macro2::TokenStream,
 }
 
-fn handle_template(template: &str) -> Result<RemplateData, TemplateError> {
-    let (estimated_template_size, code) = create_code(&template)?;
+fn handle_template<'a>(
+    template: &'a str,
+    template_path: &'a PathBuf,
+) -> Result<RemplateData, TemplateError<'a>> {
+    let (estimated_template_size, code) = create_code(template, template_path)?;
 
     Ok(RemplateData {
         estimated_template_size,
@@ -293,7 +299,7 @@ pub fn derive_remplate(item: proc_macro::TokenStream) -> proc_macro::TokenStream
     let RemplateData {
         estimated_template_size,
         remplate_code,
-    } = match handle_template(&template) {
+    } = match handle_template(&template, &canonicalized_path) {
         Ok(remplate_data) => remplate_data,
         Err(error) => return error.abortion_error().into(),
     };
