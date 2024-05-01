@@ -1,5 +1,6 @@
 use std::{
     iter,
+    ops::Range,
     path::{Path, PathBuf},
     str::FromStr,
 };
@@ -13,21 +14,27 @@ mod macro_parsing;
 mod template_parsing;
 
 enum TemplateExpression<'a> {
-    CodeBlock(&'a str),
-    CodeBlockWithFormattable(&'a str, Formattable<'a>),
+    CodeBlock(&'a str, Range<usize>),
+    CodeBlockWithFormattable((&'a str, Range<usize>), Formattable<'a>),
     Formattable(Formattable<'a>),
 }
 
 impl<'a> ToTokens for TemplateExpression<'a> {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
         match self {
-            TemplateExpression::CodeBlock(code) => match proc_macro2::TokenStream::from_str(code) {
-                Ok(code) => tokens.extend(code),
-                Err(error) => tokens
-                    .extend(syn::Error::new(error.span(), error.to_string()).to_compile_error()),
-            },
-            TemplateExpression::CodeBlockWithFormattable(code, formattable) => {
-                match proc_macro2::TokenStream::from_str(code) {
+            TemplateExpression::CodeBlock(template, code_block_range) => {
+                match proc_macro2::TokenStream::from_str(&template[code_block_range.clone()]) {
+                    Ok(code) => tokens.extend(code),
+                    Err(error) => tokens.extend(
+                        syn::Error::new(error.span(), error.to_string()).to_compile_error(),
+                    ),
+                }
+            }
+            TemplateExpression::CodeBlockWithFormattable(
+                (template, code_block_range),
+                formattable,
+            ) => {
+                match proc_macro2::TokenStream::from_str(&template[code_block_range.clone()]) {
                     Ok(code) => tokens.extend(code),
                     Err(error) => tokens.extend(
                         syn::Error::new(error.span(), error.to_string()).to_compile_error(),
@@ -40,23 +47,37 @@ impl<'a> ToTokens for TemplateExpression<'a> {
     }
 }
 
-impl<'a> TryFrom<&'a str> for TemplateExpression<'a> {
+impl<'a> TryFrom<(&'a str, Range<usize>)> for TemplateExpression<'a> {
     type Error = ();
 
-    fn try_from(code_block: &'a str) -> Result<Self, Self::Error> {
+    fn try_from(
+        (template, code_block_range): (&'a str, Range<usize>),
+    ) -> Result<Self, Self::Error> {
+        let code_block = &template[code_block_range.clone()];
+
         match code_block.rfind(';') {
             Some(position) => match code_block[(position + 1)..].trim() {
-                "" => Ok(TemplateExpression::CodeBlock(&code_block[..position + 1])),
-                format_part => Ok(TemplateExpression::CodeBlockWithFormattable(
-                    &code_block[..position + 1],
-                    Formattable::from(format_part),
+                "" => Ok(TemplateExpression::CodeBlock(
+                    template,
+                    code_block_range.start..(code_block_range.start + position + 1),
+                )),
+                _ => Ok(TemplateExpression::CodeBlockWithFormattable(
+                    (
+                        template,
+                        code_block_range.start..(code_block_range.start + position + 1),
+                    ),
+                    Formattable::from((
+                        template,
+                        (code_block_range.start + position + 1)..code_block_range.end,
+                    )),
                 )),
             },
             None => match code_block.trim() {
                 "" => Err(()),
-                format_part => Ok(TemplateExpression::Formattable(Formattable::from(
-                    format_part,
-                ))),
+                _ => Ok(TemplateExpression::Formattable(Formattable::from((
+                    template,
+                    code_block_range,
+                )))),
             },
         }
     }
@@ -67,17 +88,19 @@ struct Formattable<'a> {
     formatting: Option<&'a str>,
 }
 
-impl<'a> From<&'a str> for Formattable<'a> {
-    fn from(value: &'a str) -> Self {
-        if let Some(position) = value.find(':') {
-            let (expression, formatting) = value.split_at(position);
+impl<'a> From<(&'a str, Range<usize>)> for Formattable<'a> {
+    fn from((template, expression_range): (&'a str, Range<usize>)) -> Self {
+        let format_expression = &template[expression_range.clone()];
+
+        if let Some(position) = format_expression.find(':') {
+            let (expression, formatting) = format_expression.split_at(position);
             Formattable {
                 expression,
                 formatting: Some(formatting),
             }
         } else {
             Formattable {
-                expression: value,
+                expression: format_expression,
                 formatting: None,
             }
         }
@@ -159,7 +182,7 @@ fn create_code<'a>(
     let end = quote::quote! {};
 
     if let Some(block_range) = code_block_fragment_ranges.first() {
-        if let Ok(expression) = TemplateExpression::try_from(&template[block_range.clone()]) {
+        if let Ok(expression) = TemplateExpression::try_from((template, block_range.clone())) {
             expression.to_tokens(&mut code);
         }
     }
@@ -172,7 +195,7 @@ fn create_code<'a>(
             f.write_str(#template_fragment)?;
         });
 
-        if let Ok(expression) = TemplateExpression::try_from(&template[block_range.clone()]) {
+        if let Ok(expression) = TemplateExpression::try_from((template, block_range.clone())) {
             expression.to_tokens(&mut code);
         }
     }
