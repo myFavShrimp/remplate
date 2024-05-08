@@ -196,8 +196,6 @@ fn create_code(
         });
     }
 
-    let end = quote::quote! {};
-
     if let Some(block_range) = code_block_fragment_ranges.first() {
         if let Ok(expression) = TemplateExpression::try_from((template, block_range.clone())) {
             expression.to_tokens(&mut code, error_span);
@@ -223,8 +221,6 @@ fn create_code(
             f.write_str(#template_fragment)?;
         });
     }
-
-    code.extend(end);
 
     Ok((estimated_template_size, code))
 }
@@ -351,7 +347,7 @@ pub fn derive_remplate(item: proc_macro::TokenStream) -> proc_macro::TokenStream
 
     let include_bytes_part = create_include_bytes(canonicalized_path);
 
-    quote::quote! {
+    quote::quote_spanned! { error_span =>
         impl #impl_generics ::core::fmt::Display for #type_ident #type_generics #where_clause {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 #include_bytes_part
