@@ -175,7 +175,10 @@ fn create_code(
     let template_parsing::ParseResult {
         code_block_fragment_ranges,
         template_fragment_ranges,
-    } = template_parsing::parse_template(template, error_span)?;
+    } = template_parsing::parse_template(template).map_err(|error| {
+        let template_path = TEMPLATE_PATH.get().expect(INVALID_STATE_MESSAGE);
+        error.into(template_path, template, error_span)
+    })?;
 
     let estimated_template_size = (template_fragment_ranges
         .iter()
