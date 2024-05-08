@@ -11,6 +11,7 @@ use macro_parsing::{MacroParseResult, RemplatePath};
 
 mod error;
 mod macro_parsing;
+mod span_manipulation;
 mod template_parsing;
 
 enum TemplateExpression<'a> {
@@ -185,9 +186,7 @@ fn create_code(
         .fold(0, |acc, fragment| acc + fragment.len()))
         + (code_block_fragment_ranges.len() * core::mem::size_of::<i64>() * 2);
 
-    let mut code = quote::quote! {
-        use ::core::fmt::Write;
-    };
+    let mut code = proc_macro2::TokenStream::new();
 
     {
         let first_template_fragment = &template[template_fragment_ranges.first().unwrap().clone()];
@@ -346,6 +345,8 @@ pub fn derive_remplate(item: proc_macro::TokenStream) -> proc_macro::TokenStream
     };
 
     let include_bytes_part = create_include_bytes(canonicalized_path);
+
+    let remplate_code = span_manipulation::set_span_for_token_stream(remplate_code, error_span);
 
     quote::quote_spanned! { error_span =>
         impl #impl_generics ::core::fmt::Display for #type_ident #type_generics #where_clause {
